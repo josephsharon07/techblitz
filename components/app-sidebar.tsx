@@ -208,7 +208,7 @@ const data = {
     },
     {
       title : "Lyrics Detective",
-      key : "lyrics_detective",
+      key : "lyric_detective",
       url: "#",
       items: [
         {
