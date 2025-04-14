@@ -170,7 +170,7 @@ const data = {
     },
     {
       title : "Tressure Hunt",
-      key : "tressure_hunt",
+      key : "treasure_hunt",
       url: "#",
       items: [
         {
