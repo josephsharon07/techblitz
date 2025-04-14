@@ -1,103 +1,436 @@
-import Image from "next/image";
+"use client"
+import { AppSidebar } from "@/components/app-sidebar"
+import React, { useState, useEffect } from 'react';
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbList,
+  BreadcrumbPage,
+} from "@/components/ui/breadcrumb"
+import { Separator } from "@/components/ui/separator"
+import { useRouter } from 'next/navigation';
+import {
+  SidebarInset,
+  SidebarProvider,
+  SidebarTrigger,
+} from "@/components/ui/sidebar"
+import { supabase } from "@/lib/supabaseClient"
+import { User } from "@supabase/supabase-js"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Users, UserCheck, Shield, UtensilsCrossed, UserPlus, Group } from "lucide-react"
+import { Progress } from "@/components/ui/progress"
 
-export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm/6 text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-[family-name:var(--font-geist-mono)] font-semibold">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+export default function Page() {
+  const router = useRouter();
+  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState({ total: 0, checkedIn: 0 });
+  const [foodStats, setFoodStats] = useState({ lunch: 0 });
+  const [eventStats, setEventStats] = useState<{ [key: string]: { total: number; checkedIn: number } }>({});
+  const [eventDetailedStats, setEventDetailedStats] = useState<{ 
+    [key: string]: { 
+      teams: number; 
+      members: number;
+      checkedIn: number;
+    } 
+  }>({});
+  const [eventLoading, setEventLoading] = useState(true);
+  const [eventDetailedLoading, setEventDetailedLoading] = useState(true);
+  
+  const [authUser, setAuthUser] = useState<User | null>(null);
+  const [permissions, setPermissions] = useState<{ name?: string; [key: string]: any }>({});
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
-        </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
-    </div>
+  useEffect(() => {
+    const checkAuth = async () => {
+      setLoading(true);
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+          router.replace('/login');
+        } else {
+          setAuthUser(session.user);
+          const { data: adminData } = await supabase
+            .from('admin')
+            .select('*')
+            .eq('id', session.user.id)
+            .single();
+          setPermissions(adminData || {});
+        }
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    const fetchStats = async () => {
+      // Get total registrations
+      const { count: totalCount } = await supabase
+        .from('users')
+        .select('*', { count: 'exact', head: true });
+
+      // Get checked in users
+      const { count: checkedInCount } = await supabase
+        .from('users')
+        .select('*', { count: 'exact', head: true })
+        .eq('is_checked_in', true);
+
+      setStats({
+        total: totalCount || 0,
+        checkedIn: checkedInCount || 0
+      });
+
+      // Get food stats
+      const { data: foodData } = await supabase
+        .from('users')
+        .select('id')
+        .eq('is_food_received', true);
+
+      const lunchServed = new Set();
+      foodData?.forEach(item => {
+        lunchServed.add(item.id);
+      });
+
+      setFoodStats({
+        lunch: lunchServed.size
+      });
+    };
+
+    const fetchEventStats = async () => {
+      setEventLoading(true);
+      try {
+        // Get event stats
+        const events = [
+          'Technical Connection',
+          'Debugging',
+          'Paper Presentation',
+          'Project Expo',
+          'Prompt Engineering',
+          'Treasure Hunt',
+          'Bioscope',
+          'Lyric Detective',
+          'Meme Creation',
+          'Video Editing & Photography'
+        ];
+
+        const eventData: { [key: string]: { total: number; checkedIn: number } } = {};
+        
+        for (const event of events) {
+          const { count: totalReg } = await supabase
+            .from('registrations')
+            .select('*', { count: 'exact', head: true })
+            .eq('event', event);
+
+          const { count: checkedIn } = await supabase
+            .from('registrations')
+            .select('*', { count: 'exact', head: true })
+            .eq('event', event)
+            .eq('is_checked_in', true);
+
+          eventData[event] = {
+            total: totalReg || 0,
+            checkedIn: checkedIn || 0
+          };
+        }
+
+        setEventStats(eventData);
+      } finally {
+        setEventLoading(false);
+      }
+    };
+
+    const fetchDetailedEventStats = async () => {
+      setEventDetailedLoading(true);
+      try {
+        const events = [
+          'Technical Connection',
+          'Debugging',
+          'Paper Presentation',
+          'Project Expo',
+          'Prompt Engineering',
+          'Treasure Hunt',
+          'Bioscope',
+          'Lyric Detective',
+          'Meme Creation',
+          'Video Editing & Photography'
+        ];
+
+        const detailedEventData: { 
+          [key: string]: { 
+            teams: number; 
+            members: number; 
+            checkedIn: number; 
+          } 
+        } = {};
+        
+        for (const event of events) {
+          // Get registrations for this event
+          const { data: registrations } = await supabase
+            .from('registrations')
+            .select('team_id, is_checked_in')
+            .eq('event', event);
+
+          // Get unique teams and checked in count
+          const uniqueTeams = new Set(registrations?.map(r => r.team_id) || []);
+          const checkedIn = registrations?.filter(r => r.is_checked_in).length || 0;
+
+          // Get all participants for these teams
+          const { data: participants } = await supabase
+            .from('participation')
+            .select('team_id')
+            .eq('event_name', event)
+            .in('team_id', Array.from(uniqueTeams));
+
+          detailedEventData[event] = {
+            teams: uniqueTeams.size,
+            members: participants?.length || 0,
+            checkedIn: checkedIn
+          };
+        }
+
+        setEventDetailedStats(detailedEventData);
+      } finally {
+        setEventDetailedLoading(false);
+      }
+    };
+
+    checkAuth();
+    fetchStats();
+    fetchEventStats();
+    fetchDetailedEventStats();
+  }, [router]);
+
+  const LoadingSkeleton = () => (
+    <div className="h-8 w-24 animate-pulse rounded bg-muted"></div>
   );
+
+  return (
+    <SidebarProvider>
+      <AppSidebar />
+      <SidebarInset>
+        <header className="flex sticky top-0 bg-background h-16 shrink-0 items-center gap-2 border-b px-4">
+          <SidebarTrigger className="-ml-1" />
+          <Separator orientation="vertical" className="mr-2 h-4" />
+          <Breadcrumb>
+            <BreadcrumbList>
+              <BreadcrumbItem>
+                <BreadcrumbPage>Dashboard</BreadcrumbPage>
+              </BreadcrumbItem>
+            </BreadcrumbList>
+          </Breadcrumb>
+        </header>
+        
+        <div className="p-6 space-y-6">
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Total Registrations</CardTitle>
+                <Users className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                {loading ? <LoadingSkeleton /> : (
+                  <div className="text-2xl font-bold">{stats.total}</div>
+                )}
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Checked In</CardTitle>
+                <UserCheck className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                {loading ? (
+                  <>
+                    <LoadingSkeleton />
+                    <div className="mt-2 h-2 animate-pulse rounded bg-muted"></div>
+                  </>
+                ) : (
+                  <>
+                    <div className="text-2xl font-bold">{stats.checkedIn}</div>
+                    <Progress className="mt-2" value={(stats.checkedIn / stats.total) * 100} />
+                  </>
+                )}
+              </CardContent>
+            </Card>
+
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <UtensilsCrossed className="h-5 w-5" />
+                  Food Service Progress
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {loading ? (
+                  <div className="space-y-4">
+                    <div className="h-6 animate-pulse rounded bg-muted"></div>
+                    <div className="h-2 animate-pulse rounded bg-muted"></div>
+                  </div>
+                ) : (
+                  <div>
+                    <div className="flex items-center justify-between mb-1 text-sm">
+                      <span>{foodStats.lunch} / {stats.total}</span>
+                    </div>
+                    <Progress value={(foodStats.lunch / stats.total) * 100} />
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Users className="h-5 w-5" />
+                  Event Check-in Progress
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {eventLoading ? (
+                  Array(5).fill(0).map((_, i) => (
+                    <div key={i} className="space-y-2">
+                      <div className="h-4 animate-pulse rounded bg-muted"></div>
+                      <div className="h-2 animate-pulse rounded bg-muted"></div>
+                    </div>
+                  ))
+                ) : (
+                  Object.entries(eventStats).map(([event, stats]) => (
+                    <div key={event}>
+                      <div className="flex items-center justify-between mb-1 text-sm">
+                        <span className="truncate">{event}</span>
+                        <span>{stats.checkedIn} / {stats.total}</span>
+                      </div>
+                      <Progress value={(stats.checkedIn / stats.total) * 100} />
+                    </div>
+                  ))
+                )}
+              </CardContent>
+            </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Users className="h-5 w-5" />
+                Event Registration Statistics
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-6">
+                {eventDetailedLoading ? (
+                  Array(5).fill(0).map((_, i) => (
+                    <div key={i} className="space-y-4">
+                      <div className="h-6 w-48 animate-pulse rounded bg-muted"></div>
+                      <div className="grid grid-cols-3 gap-4">
+                        {Array(3).fill(0).map((_, j) => (
+                          <div key={j} className="h-12 animate-pulse rounded bg-muted"></div>
+                        ))}
+                      </div>
+                      <div className="h-2 animate-pulse rounded bg-muted"></div>
+                    </div>
+                  ))
+                ) : (
+                  Object.entries(eventDetailedStats).map(([event, stats]) => (
+                    <div key={event}>
+                      <div className="font-medium mb-2">{event}</div>
+                      <div className="grid grid-cols-3 gap-4">
+                        <div className="flex items-center gap-2">
+                          <Group className="h-4 w-4 text-muted-foreground" />
+                          <div>
+                            <div className="text-sm text-muted-foreground">Teams</div>
+                            <div className="font-medium">{stats.teams}</div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <UserPlus className="h-4 w-4 text-muted-foreground" />
+                          <div>
+                            <div className="text-sm text-muted-foreground">Members</div>
+                            <div className="font-medium">{stats.members}</div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <UserCheck className="h-4 w-4 text-muted-foreground" />
+                          <div>
+                            <div className="text-sm text-muted-foreground">Checked In</div>
+                            <div className="font-medium">{stats.checkedIn}</div>
+                          </div>
+                        </div>
+                      </div>
+                      <Progress className="mt-2" value={(stats.checkedIn / stats.teams) * 100} />
+                    </div>
+                  ))
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Shield className="h-5 w-5" />
+                  Authentication Details
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {loading ? (
+                  Array(4).fill(0).map((_, i) => (
+                    <div key={i} className="h-6 animate-pulse rounded bg-muted"></div>
+                  ))
+                ) : (
+                  authUser && (
+                    <>
+                      <div>
+                        <span className="font-medium">Name:</span> {permissions.name}
+                      </div>
+                      <div>
+                        <span className="font-medium">Email:</span> {authUser.email}
+                      </div>
+                      <div>
+                        <span className="font-medium">Admin ID:</span> {authUser.id}
+                      </div>
+                      <div>
+                        <span className="font-medium">Last Sign In:</span>{' '}
+                        {authUser.last_sign_in_at 
+                          ? new Date(authUser.last_sign_in_at).toLocaleString('en-IN', {
+                              timeZone: 'Asia/Kolkata'
+                            })
+                          : 'N/A'}
+                      </div>
+                    </>
+                  )
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Shield className="h-5 w-5" />
+                  Permissions
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {loading ? (
+                  <div className="grid grid-cols-2 gap-2">
+                    {Array(6).fill(0).map((_, i) => (
+                      <div key={i} className="h-6 animate-pulse rounded bg-muted"></div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-2">
+                    {Object.entries(permissions)
+                      .filter(([key]) => key !== 'id' && key !== 'created_at')
+                      .map(([key, value]) => (
+                        <div key={key} className="flex items-center gap-2">
+                          <div className={`h-2 w-2 rounded-full ${value ? 'bg-green-500' : 'bg-red-500'}`} />
+                          <span className="capitalize">{key.replace(/_/g, ' ')}</span>
+                        </div>
+                      ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      </SidebarInset>
+    </SidebarProvider>
+  )
 }
